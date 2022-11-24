@@ -18,5 +18,8 @@ your python.  You will also need to install at least GitPython, i.e.,
   html file, `tree.html` which is little nicer.  You can click on
   various nodes and see which files changed from last branch point to
   the specified node.
-  
+
+## other files
+
+- tree.css and tree.js are used to render the output of bgraph.py.
   
