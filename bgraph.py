@@ -1,15 +1,20 @@
 #!/home/seth/.virtualenvs/gitutils/bin/python
 
 from git import Repo
+from git import exc
 from pprint import pprint
 from datetime import datetime
 import argparse
 import sys
+import os
+import webbrowser
 
-parser = argparse.ArgumentParser(description="show how branches are related")
+scriptDir = os.path.realpath(os.path.dirname(__file__))
+
+parser = argparse.ArgumentParser(description="show how branches are related", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("-v", "--verbose", action="store_true", help="be verbose")
 parser.add_argument("-R", "--remote", action="store_true", help="include remote branches")
-parser.add_argument("-r", "--repodir", default="/home/seth/research/pco/wallet", help="base of repo")
+parser.add_argument("-r", "--repodir", default=".", help="base of repo")
 parser.add_argument("branches", nargs='*', help="branches to compare")
 args = parser.parse_args()
 verbose = args.verbose
@@ -17,8 +22,23 @@ includeRemote = args.remote
 repodir = args.repodir
 branches = args.branches
 
-repo = Repo(repodir)
+# find repo by working up to root from cwd
+cwd = os.getcwd()
+repo = None
+while repo is None:
+    try:
+        repo = Repo(repodir)
+        break
+    except exc.InvalidGitRepositoryError:
+        cwd = os.path.realpath(os.path.dirname(os.getcwd()))
+        if (cwd == '/'):
+            print("Could not find a repo starting from {}".format(cwd))
+            exit(-1)
+        os.chdir(cwd)
+        repo = None
 assert not repo.bare
+cwd = os.getcwd()
+print("Working on Repo at: {}".format(cwd))
 
 ################################################################
 # helper routines
@@ -40,7 +60,7 @@ class Node:
     # all commits seen so far
     all = {}
     root = None
-    
+
     # create a new node
     def __init__(self, commit, child):
         # print("Adding {} as parent of {}".format(commit, child))
@@ -167,8 +187,8 @@ def htmltree(depth, f, node):
 
 def html(f, node):
     f.write('<head>\n')
-    f.write('<link rel="stylesheet" href="tree.css">\n')
-    f.write('<script src="tree.js"></script>\n')
+    f.write('<link rel="stylesheet" href="{}">\n'.format(os.path.join(scriptDir, "tree.css")))
+    f.write('<script src="{}"></script>\n'.format(os.path.join(scriptDir, "tree.js")))
     f.write('</head>\n')
     f.write('<body>\n')
     f.write('<div class="tree-diagram">\n')
@@ -187,7 +207,8 @@ def html(f, node):
 
 
 allbranches = getAllBranches(remote=includeRemote)
-pprint(allbranches)
+if verbose:
+    pprint(allbranches)
 
 # get all branches  (repo.heads is same)
 if len(branches) == 0:
@@ -306,71 +327,9 @@ while True:
             sys.stdout.write("\n")
     row = nextrow
 
-with open('tree.html', "w") as outfile:
+htmlout = os.path.join(scriptDir, "tree.html")
+with open(htmlout, "w") as outfile:
     html(outfile, lca)
+webbrowser.open('file://{}'.format(htmlout))
+
 exit(0)
-
-
-def getHistory(start):
-    history = []
-    while start is not None:
-        history.append(start)
-        if len(start.parents) == 0:
-            history.reverse()
-            return history
-        start = start.parents[0]
-
-
-def getBranch(name):
-    branches = repo.branches
-    for branch in branches:
-        if name == branch.name:
-            return branch
-    print("Did not find branch: '{}'".format(name))
-    return None
-
-
-def oneLiner(commit):
-    sys.stdout.write("{} {} {: <15.15} | ".format(datetime.fromtimestamp(commit.committed_date).strftime("%Y-%m-%d"), commit.hexsha[0:8], commit.author.name))
-    for fname in commit.stats.files.keys():
-        sys.stdout.write("\t{}".format(fname))
-    if showmsgs:
-        if len(commit.message) > 0:
-            sys.stdout.write("\n\t{}".format(commit.message))
-    sys.stdout.write("\n")
-
-
-def oneLiners(history, branchname):
-    print("======== {}".format(branchname))
-    for c in history:
-        oneLiner(c)
-
-
-A = getBranch(aname)
-Alog = getHistory(A.commit)
-maxA = len(Alog)
-B = getBranch(bname)
-Blog = getHistory(B.commit)
-maxB = len(Blog)
-print(maxA, maxB)
-
-# find last common ansector
-newest = len(Alog) if len(Alog) < len(Blog) else len(Blog)
-lastCommon = 0
-for i in range(newest):
-    # print(Alog[maxA-i], Blog[maxB-i])
-    # print(datetime.fromtimestamp(Alog[maxA-i].committed_date).strftime("%Y-%m-%d"), Alog[maxA-i].author, Alog[maxA-i].hexsha, Alog[maxA-i].message)
-    if Alog[i] != Blog[i]:
-        break
-    lastCommon = i
-print("Looking in {} between {} and {}".format(repodir, aname, bname))
-print("LCA is at {}: {}".format(lastCommon, Alog[lastCommon].hexsha[:8]))
-oneLiners(Alog[lastCommon+1:], aname)
-oneLiners(Blog[lastCommon+1:], bname)
-
-
-# show untracked files on active branch
-if False:
-    untracked = repo.untracked_files
-    pprint(untracked)
-
