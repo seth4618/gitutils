@@ -15,12 +15,18 @@ parser = argparse.ArgumentParser(description="show how branches are related", fo
 parser.add_argument("-v", "--verbose", action="store_true", help="be verbose")
 parser.add_argument("-R", "--remote", action="store_true", help="include remote branches")
 parser.add_argument("-r", "--repodir", default=".", help="base of repo")
+parser.add_argument("-a", "--after", default="", help="Only include branches with at least one commit after date")
 parser.add_argument("branches", nargs='*', help="branches to compare")
 args = parser.parse_args()
 verbose = args.verbose
 includeRemote = args.remote
 repodir = args.repodir
 branches = args.branches
+after = args.after
+ignoreBefore = datetime(1970, 1, 1, 0, 0)
+if after != "":
+    ignoreBefore = datetime.strptime(after, "%m/%d/%y")
+ignoreBefore = ignoreBefore.timestamp()
 
 # find repo by working up to root from cwd
 cwd = os.getcwd()
@@ -146,6 +152,8 @@ class Node:
             start = start.parent
         return (start, files)
 
+################################################################
+# help routines
 
 def namefield(name, maxlen=16):
     if len(name) > (maxlen-2):
@@ -222,6 +230,11 @@ for branch in branches:
 # build graph
 for branchname in branches:
     branch = allbranches[branchname]
+    if branch.commit.committed_date < ignoreBefore:
+        # print("Skipping {}, it is from {}".format(branch.name, datetime.fromtimestamp(branch.commit.committed_date).strftime("%Y-%m-%d")))
+        continue
+    else:
+        print("Including {}".format(branch.name))
     leaf = Node.addIfNeeded(branch.commit)
     # print(leaf)
     leaf.name = branch.name
